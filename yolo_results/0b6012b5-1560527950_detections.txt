@@ -1,0 +1,7 @@
+Detection Results for 0b6012b5-1560527950.png
+Total objects detected: 1
+
+Class: person, Confidence: 0.64, Bounding Box: [0.20635223388671875, 284.14971923828125, 90.16092681884766, 478.64862060546875]
+
+Summary of detected classes:
+person: 1 object(s)

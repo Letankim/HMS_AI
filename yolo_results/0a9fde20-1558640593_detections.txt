@@ -1,0 +1,9 @@
+Detection Results for 0a9fde20-1558640593.png
+Total objects detected: 2
+
+Class: apple, Confidence: 0.69, Bounding Box: [325.2047119140625, 162.80343627929688, 455.250732421875, 288.6069641113281]
+Class: bowl, Confidence: 0.60, Bounding Box: [219.75030517578125, 39.13739013671875, 579.5755615234375, 394.33026123046875]
+
+Summary of detected classes:
+apple: 1 object(s)
+bowl: 1 object(s)

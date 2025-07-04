@@ -1,0 +1,11 @@
+Detection Results for downloaded_image
+Total objects detected: 4
+
+Class: orange, Confidence: 0.71, Bounding Box: [251.85638427734375, 315.1370849609375, 456.22698974609375, 506.32037353515625]
+Class: bowl, Confidence: 0.67, Bounding Box: [140.07093811035156, 23.04163360595703, 620.0, 402.1910095214844]
+Class: orange, Confidence: 0.67, Bounding Box: [62.733097076416016, 289.6075439453125, 273.3690185546875, 467.2032470703125]
+Class: orange, Confidence: 0.57, Bounding Box: [496.43353271484375, 94.7732162475586, 619.6578979492188, 241.05271911621094]
+
+Summary of detected classes:
+orange: 3 object(s)
+bowl: 1 object(s)

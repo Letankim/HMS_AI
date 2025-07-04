@@ -1,0 +1,7 @@
+Detection Results for 1de9d63c-1558725353.png
+Total objects detected: 1
+
+Class: bowl, Confidence: 0.62, Bounding Box: [181.39923095703125, 1.231414794921875, 608.2715454101562, 454.0252380371094]
+
+Summary of detected classes:
+bowl: 1 object(s)

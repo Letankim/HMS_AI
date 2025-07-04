@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+tensorflow
+torch
+ultralytics
+pillow
+numpy
+pandas
+scikit-learn
+python-dotenv
+requests
+google-generativeai
