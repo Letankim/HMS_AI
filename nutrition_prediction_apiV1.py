@@ -307,4 +307,5 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = int(os.getenv("PORT", 8000))  # Render sẽ gán PORT, fallback 8000 khi chạy local
+    uvicorn.run(app, host="0.0.0.0", port=port)
