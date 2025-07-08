@@ -305,7 +305,7 @@ async def predict_nutrition_endpoint(
 async def root():
     return {"message": "Welcome to the Nutrition Prediction API. Use /predict/ to upload an image or provide a URL."}
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))  # Render sẽ gán PORT, fallback 8000 khi chạy local
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# if __name__ == "__main__":
+#     import uvicorn
+#     port = int(os.getenv("PORT", 8000))  # Render sẽ gán PORT, fallback 8000 khi chạy local
+#     uvicorn.run(app, host="0.0.0.0", port=port)
