@@ -7,4 +7,4 @@ services:
     pythonVersion: 3.10
     envVars:
       - key: GEMINI_API_KEY
-        sync: false
+        value: "AIzaSyB0bePVOwK-stx67SiQqf0EEpVJroP8LrE"
