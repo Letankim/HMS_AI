@@ -1,3 +1,4 @@
+import socket
 import os
 import numpy as np
 import pandas as pd
@@ -305,7 +306,13 @@ async def predict_nutrition_endpoint(
 async def root():
     return {"message": "Welcome to the Nutrition Prediction API. Use /predict/ to upload an image or provide a URL."}
     
-if __name__ == "__main__":
-    import uvicorn
+@app.on_event("startup")
+async def check_port_open():
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("nutrition_api:app", host="0.0.0.0", port=port)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("0.0.0.0", port))
+        logging.info(f"✅ Port {port} is available and bound successfully.")
+        s.close()
+    except Exception as e:
+        logging.error(f"❌ Port binding failed: {e}")
