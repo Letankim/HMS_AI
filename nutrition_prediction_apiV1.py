@@ -1,5 +1,6 @@
-import socket
 import os
+import socket
+import threading
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -38,7 +39,6 @@ logging.basicConfig(
 class NutritionPredictionError(Exception):
     pass
 
-# Pydantic model for response
 class NutritionPredictionResponse(BaseModel):
     food_name: str
     quantity: int
@@ -49,13 +49,11 @@ class NutritionPredictionResponse(BaseModel):
 
 app = FastAPI(title="Nutrition Prediction API", description="API for predicting nutritional content of food images")
 
-# Global variables for model and scalera
 MODEL_PATH = 'food_nutrition_cnn.keras'
 CSV_FILE = 'weights_nutrition.csv'
 VAL_CSV_FILE = 'validation_predictions.csv'
 YOLO_MODEL_PATH = './resultsV1/yolo11n.pt'
 
-# Initialize Gemini API
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if not GEMINI_API_KEY:
     logging.error("GEMINI_API_KEY not found in environment variables")
@@ -69,13 +67,18 @@ except Exception as e:
     logging.error(f"Failed to initialize Gemini API: {e}")
     raise NutritionPredictionError(f"Failed to initialize Gemini API: {e}")
 
-# Load CNN model
-try:
-    cnn_model = load_model(MODEL_PATH)
-    logging.info("CNN model loaded successfully")
-except Exception as e:
-    logging.error(f"Failed to load CNN model: {e}")
-    raise NutritionPredictionError(f"Failed to load CNN model: {e}")
+cnn_model = None
+yolo_model = None
+
+def get_cnn_model():
+    if cnn_model is None:
+        raise NutritionPredictionError("CNN model is not ready yet.")
+    return cnn_model
+
+def get_yolo_model():
+    if yolo_model is None:
+        raise NutritionPredictionError("YOLO model is not ready yet.")
+    return yolo_model
 
 def load_scaler_and_metrics(csv_file: str, val_csv_file: str = None) -> Tuple[StandardScaler, Dict]:
     try:
@@ -109,16 +112,12 @@ def load_scaler_and_metrics(csv_file: str, val_csv_file: str = None) -> Tuple[St
             logging.warning("Validation CSV not provided or does not exist; metrics unavailable")
             metrics = {f'r2_{label}': 'N/A' for label in ['weight', 'calories', 'fat', 'carbs', 'protein']}
             metrics.update({f'mape_{label}': 'N/A' for label in ['weight', 'calories', 'fat', 'carbs', 'protein']})
-        
+
         return scaler, metrics
     except Exception as e:
         raise NutritionPredictionError(f"Failed to load scaler or metrics: {e}")
 
-try:
-    scaler, metrics = load_scaler_and_metrics(CSV_FILE, VAL_CSV_FILE)
-except Exception as e:
-    logging.error(f"Failed to initialize scaler or metrics: {e}")
-    raise NutritionPredictionError(f"Failed to initialize scaler or metrics: {e}")
+scaler, metrics = load_scaler_and_metrics(CSV_FILE, VAL_CSV_FILE)
 
 def download_image(url: str) -> BytesIO:
     try:
@@ -133,7 +132,6 @@ def preprocess_image(image_source: BytesIO, target_size: Tuple[int, int] = (224,
         img = load_img(image_source, target_size=target_size)
         img_array = img_to_array(img) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
-        logging.info("Image preprocessed successfully")
         return img_array
     except Exception as e:
         raise NutritionPredictionError(f"Failed to preprocess image: {e}")
@@ -148,8 +146,7 @@ def verify_food_image(image_source: BytesIO) -> Tuple[bool, float]:
         ])
         text = response.text.lower()
         is_food = "yes" in text or "food" in text
-        # Extract confidence score (assuming Gemini returns a numeric value in the response)
-        confidence = 0.5  # Default if not found
+        confidence = 0.5
         for word in text.split():
             try:
                 if 0 <= float(word) <= 1:
@@ -157,64 +154,38 @@ def verify_food_image(image_source: BytesIO) -> Tuple[bool, float]:
                     break
             except ValueError:
                 continue
-        logging.info(f"Gemini food verification: is_food={is_food}, confidence={confidence}")
         return is_food, confidence
     except Exception as e:
-        logging.error(f"Gemini food verification failed: {e}")
         raise NutritionPredictionError(f"Gemini food verification failed: {e}")
 
-def detect_food_items(image_source: BytesIO, model_path: str = YOLO_MODEL_PATH) -> Tuple[str, int]:
+def detect_food_items(image_source: BytesIO) -> Tuple[str, int]:
     try:
-        yolo_model = YOLO(model_path)
-        logging.info(f"YOLO model {model_path} loaded successfully")
-        
+        yolo = get_yolo_model()
         with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
             img = Image.open(image_source)
             img.save(tmp_file.name)
-            results = yolo_model.predict(source=tmp_file.name, conf=0.5)
-        
-        max_attempts = 5
-        for attempt in range(max_attempts):
-            try:
-                os.unlink(tmp_file.name)
-                logging.info(f"Temporary file {tmp_file.name} deleted successfully")
-                break
-            except PermissionError:
-                if attempt < max_attempts - 1:
-                    time.sleep(1)
-                else:
-                    logging.warning(f"Failed to delete temporary file {tmp_file.name} after {max_attempts} attempts")
-        
+            results = yolo.predict(source=tmp_file.name, conf=0.5)
+        os.unlink(tmp_file.name)
         if results and len(results[0].boxes) > 0:
             boxes = results[0].boxes.xyxy.cpu().numpy()
             class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
             class_names = results[0].names
-            
             unique_classes = np.unique(class_ids, return_counts=True)
             if len(unique_classes[0]) > 0:
                 dominant_class_id = unique_classes[0][np.argmax(unique_classes[1])]
                 food_name = class_names[dominant_class_id]
                 quantity = len(boxes)
-                logging.info(f"Detected {quantity} {food_name}(s)")
                 return food_name, quantity
-            else:
-                logging.warning("No valid food classes detected")
-                return "Unknown", 0
-        else:
-            logging.warning("No objects detected in the image")
-            return "Unknown", 0
+        return "Unknown", 0
     except Exception as e:
         raise NutritionPredictionError(f"Failed to detect food items: {e}")
 
 def predict_nutrition(model: tf.keras.Model, image_array: np.ndarray, scaler: StandardScaler, image_source: BytesIO) -> Dict:
     try:
-        # CNN predictions
         cnn_predictions = model.predict(image_array, verbose=0)
         cnn_predictions = scaler.inverse_transform(cnn_predictions)[0]
         labels = ['total_weight', 'calories', 'fat', 'carbs', 'protein']
         cnn_result = {label: float(max(0, pred)) for label, pred in zip(labels, cnn_predictions)}
-        
-        # Gemini predictions (for refinement)
         image_source.seek(0)
         gemini_response = gemini_model.generate_content([
             "Analyze this food image and estimate its nutritional content (total weight, calories, fat, carbs, protein).",
@@ -223,9 +194,7 @@ def predict_nutrition(model: tf.keras.Model, image_array: np.ndarray, scaler: St
         gemini_text = gemini_response.text
         gemini_result = {}
         for label in labels:
-            # Placeholder: Parse Gemini response for nutritional values
-            # This assumes Gemini returns values in a structured format; adjust based on actual response
-            gemini_result[label] = cnn_result[label]  # Fallback to CNN if parsing fails
+            gemini_result[label] = cnn_result[label]
             for line in gemini_text.split('\n'):
                 if label in line.lower():
                     try:
@@ -234,60 +203,29 @@ def predict_nutrition(model: tf.keras.Model, image_array: np.ndarray, scaler: St
                         break
                     except (ValueError, IndexError):
                         continue
-        
-        # Combine predictions (e.g., weighted average)
         combined_result = {}
         for label in labels:
-            # Example: 70% CNN + 30% Gemini
             combined_value = 0.7 * cnn_result[label] + 0.3 * gemini_result.get(label, cnn_result[label])
             combined_result[label] = float(max(0, combined_value))
-        
-        logging.info(f"Combined predictions: {combined_result}")
         return combined_result
     except Exception as e:
         raise NutritionPredictionError(f"Prediction failed: {e}")
 
-@app.exception_handler(NutritionPredictionError)
-async def nutrition_prediction_exception_handler(request, exc: NutritionPredictionError):
-    return JSONResponse(
-        status_code=400,
-        content={"detail": str(exc)}
-    )
-
 @app.post("/predict/", response_model=NutritionPredictionResponse)
-async def predict_nutrition_endpoint(
-    file: Optional[UploadFile] = File(None),
-    image_url: Optional[HttpUrl] = Query(None)
-):
+async def predict_nutrition_endpoint(file: Optional[UploadFile] = File(None), image_url: Optional[HttpUrl] = Query(None)):
     try:
-        if (file is None and image_url is None) or (file is not None and image_url is not None):
+        if (file is None and image_url is None) or (file and image_url):
             raise NutritionPredictionError("Provide either an image file or an image URL, not both or neither")
-        
-        # Handle image input
-        if file:
-            image_data = BytesIO(await file.read())
-            logging.info(f"Received uploaded file: {file.filename}")
-        else:
-            image_data = download_image(image_url)
-            logging.info(f"Downloaded image from URL: {image_url}")
-        
-        # Verify if image contains food using Gemini
+        image_data = BytesIO(await file.read()) if file else download_image(image_url)
         is_food, food_confidence = verify_food_image(image_data)
         if not is_food:
             raise NutritionPredictionError("Image does not contain food")
-        
-        # Preprocess image
         image_array = preprocess_image(image_data)
-        
-        # Detect food items
         image_data.seek(0)
         food_name, quantity = detect_food_items(image_data)
-        
-        # Predict nutrition
         image_data.seek(0)
-        predictions = predict_nutrition(cnn_model, image_array, scaler, image_data)
-        
-        # Return response
+        cnn = get_cnn_model()
+        predictions = predict_nutrition(cnn, image_array, scaler, image_data)
         return NutritionPredictionResponse(
             food_name=food_name,
             quantity=quantity,
@@ -305,7 +243,22 @@ async def predict_nutrition_endpoint(
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Nutrition Prediction API. Use /predict/ to upload an image or provide a URL."}
-    
+
+@app.on_event("startup")
+async def load_models_background():
+    def load_models():
+        global cnn_model, yolo_model
+        try:
+            logging.info("🔄 Loading CNN model...")
+            cnn_model = load_model(MODEL_PATH)
+            logging.info("✅ CNN model loaded.")
+            logging.info("🔄 Loading YOLO model...")
+            yolo_model = YOLO(YOLO_MODEL_PATH)
+            logging.info("✅ YOLO model loaded.")
+        except Exception as e:
+            logging.error(f"❌ Failed to load models: {e}")
+    threading.Thread(target=load_models).start()
+
 @app.on_event("startup")
 async def check_port_open():
     port = int(os.environ.get("PORT", 8000))
